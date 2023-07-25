@@ -28,7 +28,6 @@ impl Pedal for Block{
             .filter_map(Keycode::from_scancode)
             .collect();
 
-        // Get the difference between the new and old sets.
         let new_keys = &keys - prev_keys;
         let block_right = calculate_object_right(&self);
         if !keys.is_empty(){
@@ -49,7 +48,7 @@ impl Pedal for Block{
 }
 trait Ball{
     fn handle_wall(&mut self);
-    fn react_object(&mut self, object: &Block);
+    fn react_object(&mut self, object: &Block)-> bool;
 }
 impl Ball for Block{
     fn handle_wall(&mut self){
@@ -60,17 +59,13 @@ impl Ball for Block{
             self.velocity_y = -self.velocity_y;
         }
     } 
-    fn react_object(&mut self, object:&Block){
+    fn react_object(&mut self, object:&Block)->bool{
         let block_right = calculate_object_right(&self);
-        if self.border.x == object.border.x() || self.border.x + block_right == object.border.x() + block_right{
-            self.velocity_x = -self.velocity_x;
-            println!("tengri")
-
-        }
-        if self.border.y == object.border.y() || self.border.y + BLOCK_SIZE as i32 * 10 == object.border.y(){
+        if (self.border.y == object.border.y() || self.border.y + BLOCK_SIZE as i32 * 10 == object.border.y()) && (self.border.x >= object.border.x() && self.border.x <= object.border.x() + calculate_object_right(object)) {
             self.velocity_y = -self.velocity_y;
-            println!("lol");
-        }
+            return true;
+        }       
+        false 
     }
 }
 struct Block {
@@ -138,7 +133,7 @@ pub fn main() {
     let ball_rect = Rect::new(40, 40, BLOCK_SIZE*10, BLOCK_SIZE*10);
     let mut ball = Block::new(ball_rect, BLOCK_SIZE as i32 *2, BLOCK_SIZE as i32 *1, Color::WHITE);
 
-    let player1_rect = Rect::new(400, 400, BLOCK_SIZE*24, BLOCK_SIZE*3);
+    let player1_rect = Rect::new(750, 750, BLOCK_SIZE*24, BLOCK_SIZE*3);
     let mut player1 = Block::new(player1_rect, 0, 0, Color::WHITE);
     
     'running: loop {
@@ -163,6 +158,7 @@ pub fn main() {
 
         ball.handle_wall();
         ball.react_object(&player1);
+        
         ball.update_position();
         ball.render(&mut canvas);
         
