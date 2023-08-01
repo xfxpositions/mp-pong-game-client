@@ -143,7 +143,6 @@ impl Block{
     }
    
     fn update_position(&mut self){
-        
         self.rect.x += self.velocity_x;
         self.rect.y += self.velocity_y;
         self.border.x += self.velocity_x;
@@ -194,6 +193,9 @@ pub fn main() {
     let player1_rect = Rect::new(750, 750, BLOCK_SIZE*24, BLOCK_SIZE*3);
     let mut player1 = Block::new(player1_rect, 0, 0, Color::WHITE);
 
+    let enemy_rect = Rect::new(50, 50, BLOCK_SIZE*24, BLOCK_SIZE*3);
+    let mut enemy = Block::new(enemy_rect, 0, 0, Color::WHITE);
+
     'running: loop {
        
         for event in event_pump.poll_iter() {
@@ -240,8 +242,7 @@ pub fn main() {
             player1.handle_movement(&mut event_pump, &prev_keys);
             player1.update_position();
             player1.render(&mut canvas);
-    
-    
+        
             ball.handle_wall();
             ball.react_object(&player1);
             ball.handle_score(&mut score);
