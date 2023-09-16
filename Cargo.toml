@@ -7,3 +7,8 @@ edition = "2021"
 
 [dependencies]
 sdl2 = { version = "0.35.2", features = ["ttf"] }
+serde = { version = "1.0.180", features = ["derive"] }
+serde_json = "1.0.104"
+tungstenite = "0.20.0"
+url = "2.4.0"
+uuid = "1.4.1"

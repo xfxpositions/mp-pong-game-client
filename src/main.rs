@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::net::{TcpStream, SocketAddr};
 use std::time::Duration;
 
 use sdl2::EventPump;
@@ -10,6 +11,12 @@ use sdl2::render::{Canvas, TextureQuery, TextureCreator};
 use sdl2::sys::Font;
 use sdl2::ttf::{FontStyle, Sdl2TtfContext};
 use sdl2::video::{Window, WindowContext};
+use serde::{Serialize, Deserialize};
+use tungstenite::Message;
+use tungstenite::stream::MaybeTlsStream;
+use tungstenite::protocol::WebSocket;
+
+use uuid::Uuid;
 
 const WINDOW_WIDTH: u32 = 800;
 const WINDOW_HEIGTH: u32 = 800;
@@ -117,6 +124,7 @@ impl Ball for Block{
         self.velocity_y = 0;
     }
 }
+
 struct Block {
     rect: Rect,
     border: Rect,
@@ -158,6 +166,77 @@ fn clear_screen(canvas: &mut sdl2::render::Canvas<Window>){
     canvas.present();
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RectRecv {
+    x: i32,
+    y: i32,
+    w: u32,
+    h: u32,
+}
+
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct Client {
+    addr: SocketAddr,
+    block: BlockRecv,
+    sent: bool,
+    id: String
+}
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BlockRecv {
+    pub rect: RectRecv,
+    pub border: RectRecv,
+    pub velocity_x: i32,
+    pub velocity_y: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GameRecv {
+    score: (u32,u32),
+    tick: u64,
+    clients: Vec<Client>,
+    is_started: bool,
+    ball: BlockRecv,
+    headers_sent: bool
+}
+
+fn sync_server_send(socket: &mut WebSocket<MaybeTlsStream<TcpStream>>, player_to_send: BlockRecv, game_recv: &mut GameRecv){
+    
+    let data_json = serde_json::to_string(&player_to_send).unwrap();
+    let msg = Message::Text(data_json);
+    
+    socket.write_message(msg).unwrap();
+    
+}
+fn sync_server_read(socket: &mut WebSocket<MaybeTlsStream<TcpStream>>) -> GameRecv{
+    let msg= socket.read_message().unwrap();
+    
+    let json_value: GameRecv = serde_json::from_str(msg.to_string().as_str()).unwrap();
+    json_value
+}
+
+fn await_new_tick(mut current_tick: u64, socket: &mut WebSocket<MaybeTlsStream<TcpStream>>){
+    let mut new_tick = false;
+    loop{
+
+        if new_tick{
+            break;
+        }
+        //read the game
+        let game_recv = sync_server_read(socket);
+
+        if current_tick < game_recv.tick{
+            current_tick = game_recv.tick;
+            new_tick = true;
+        }
+        
+    }
+    
+}
+
 pub fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -167,11 +246,21 @@ pub fn main() {
     let window = video_subsystem
         .window("divine snake", WINDOW_WIDTH, WINDOW_HEIGTH)
         .position_centered()
+        .opengl()
         .build()
         .unwrap();
 
+    //tick 
+    let mut tick: u64 = 0;
+    //server
+    let (mut socket, response) = tungstenite::connect(
+        url::Url::parse("ws://localhost:9001").unwrap()
+    ).expect("Can't connect");
+    let addr: String = socket.read_message().unwrap().to_string();
+    
+    println!("addr : {}", addr);
 
-    let mut canvas = window.into_canvas().build().unwrap();
+    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
         
 
@@ -195,6 +284,7 @@ pub fn main() {
 
     let enemy_rect = Rect::new(50, 50, BLOCK_SIZE*24, BLOCK_SIZE*3);
     let mut enemy = Block::new(enemy_rect, 0, 0, Color::WHITE);
+
 
     'running: loop {
        
@@ -238,22 +328,39 @@ pub fn main() {
             info_text = "Player 2 Won!".to_string();
             ball.restart();
         }
-        if game_runs {
-            player1.handle_movement(&mut event_pump, &prev_keys);
-            player1.update_position();
-            player1.render(&mut canvas);
+        let game_recv = sync_server_read(&mut socket);
         
-            ball.handle_wall();
-            ball.react_object(&player1);
-            ball.handle_score(&mut score);
-            ball.update_position();
+        for client in game_recv.clients{
+            if client.addr.to_string() == addr {
+                player1.rect.x = client.block.rect.x;
+                player1.border.x = client.block.border.x;
+
+            }else{
+                enemy.rect.x = client.block.rect.x;
+                enemy.border.x = client.block.border.x;
+            }
+        }
+        ball.rect.x = game_recv.ball.rect.x;
+        ball.rect.y = game_recv.ball.rect.y;
+        ball.border.x = game_recv.ball.border.x;
+        ball.border.y = game_recv.ball.border.y;
+
+        println!("new tick!");
+        if game_runs {
+            //player1.handle_movement(&mut event_pump, &prev_keys);
+            player1.render(&mut canvas);
+            
+            enemy.render(&mut canvas);
+
             ball.render(&mut canvas);
         }
 
-      
+        //wait's new tick
+        //await_new_tick(tick, &mut socket);
+        
         
         canvas.present();
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        //::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
       
     }
 }
